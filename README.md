@@ -7,7 +7,7 @@ GitHub Action for [nginx-lint](https://github.com/walf443/nginx-lint) — Lint n
 ### Basic
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: nginx.conf
 ```
@@ -15,7 +15,7 @@ GitHub Action for [nginx-lint](https://github.com/walf443/nginx-lint) — Lint n
 ### Multiple files
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: nginx.conf conf.d/default.conf
 ```
@@ -23,7 +23,7 @@ GitHub Action for [nginx-lint](https://github.com/walf443/nginx-lint) — Lint n
 ### With configuration file
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: nginx.conf
     config: .nginx-lint.toml
@@ -34,7 +34,7 @@ GitHub Action for [nginx-lint](https://github.com/walf443/nginx-lint) — Lint n
 Lint a partial config file (e.g., a server block snippet):
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: conf.d/mysite.conf
     context: http,server
@@ -43,7 +43,7 @@ Lint a partial config file (e.g., a server block snippet):
 ### JSON output
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: nginx.conf
     format: json
@@ -52,7 +52,7 @@ Lint a partial config file (e.g., a server block snippet):
 ### Pin to a specific version
 
 ```yaml
-- uses: walf443/nginx-lint-action@v0
+- uses: walf443/nginx-lint-action@v1
   with:
     files: nginx.conf
     version: "0.3.0"
@@ -63,11 +63,46 @@ Lint a partial config file (e.g., a server block snippet):
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `files` | Yes | — | Path to nginx configuration file(s), space-separated |
-| `version` | No | `latest` | nginx-lint Docker image tag |
-| `format` | No | `text` | Output format (`text` or `json`) |
+| `version` | No | `0.14.0@sha256:...` | nginx-lint Docker image tag (pinned with digest) |
+| `format` | No | `github-actions` | Output format (`github-actions`, `errorformat`, or `json`) |
 | `config` | No | — | Path to `.nginx-lint.toml` configuration file |
 | `context` | No | — | Parent context for partial config files (e.g., `http,server`) |
 | `args` | No | — | Additional CLI arguments passed to nginx-lint |
+| `cache` | No | `true` | Cache compiled WASM plugins across CI runs using `actions/cache` |
+
+## WASM plugin cache
+
+nginx-lint compiles WASM plugins on startup and caches the compiled artifacts
+on disk. This action persists that cache across CI runs with `actions/cache`,
+so workflows using WASM plugins skip recompilation on warm runs.
+
+Caching is enabled by default. Cache entries are keyed internally by plugin
+bytes and compiler configuration, so a restored cache is always safe: updated
+plugins recompile automatically and stale entries are just ignored.
+
+The cache is saved even when linting fails, so the compiled plugins survive
+the fix-and-rerun loop. When there is nothing to cache (no WASM plugins, or
+an nginx-lint version without cache support), no cache entry is uploaded at
+all, so the default costs nothing for workflows that don't use plugins.
+
+To disable it:
+
+```yaml
+- uses: walf443/nginx-lint-action@v1
+  with:
+    files: nginx.conf
+    cache: false
+```
+
+To manage the cache yourself (e.g., with custom keys), set `cache: false` and
+cache `${{ runner.temp }}/nginx-lint-cache` with your own `actions/cache`
+step — the action always mounts that directory as the nginx-lint cache root.
+
+Note: the plugin cache requires an nginx-lint version with cache support
+(newer than 0.15.0). Older versions simply ignore the cache directory, so
+enabling it is harmless. If your `.nginx-lint.toml` sets `cache_dir`, it takes
+precedence over the directory this action mounts and the cache will not be
+persisted across runs.
 
 ## Full workflow examples
 
@@ -91,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: walf443/nginx-lint-action@v0
+      - uses: walf443/nginx-lint-action@v1
         with:
           files: nginx.conf
 ```
@@ -133,7 +168,7 @@ jobs:
           fi
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
 
-      - uses: walf443/nginx-lint-action@v0
+      - uses: walf443/nginx-lint-action@v1
         if: steps.changed.outputs.files != ''
         with:
           files: ${{ steps.changed.outputs.files }}
